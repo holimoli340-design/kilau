@@ -6,11 +6,18 @@ export default defineConfig(({ mode }) => {
   // Load env file based on `mode` in the current working directory.
   // Set the third parameter to '' to load all env regardless of the `VITE_` prefix.
   const env = loadEnv(mode, (process as any).cwd(), '');
+  
   return {
     plugins: [react()],
     define: {
-      // Polyfill process.env.API_KEY so the existing code works without changes
-      'process.env.API_KEY': JSON.stringify(env.API_KEY)
+      // Polyfill process.env.API_KEY so the existing code works without changes.
+      // We use JSON.stringify to ensure it's treated as a string literal in the code.
+      // This handles both local .env files and Netlify Environment Variables.
+      'process.env.API_KEY': JSON.stringify(env.API_KEY || process.env.API_KEY || '')
+    },
+    build: {
+      // Ensure chunks are properly handled
+      chunkSizeWarningLimit: 1000,
     }
   }
 })
