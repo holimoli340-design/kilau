@@ -37,22 +37,27 @@ const App: React.FC = () => {
   // 1. Load Data from IndexedDB on Mount
   useEffect(() => {
     const initData = async () => {
-        const storedItems = await loadPortfolioFromDB();
-        if (storedItems && storedItems.length > 0) {
-            // Merge stored items with default structure to ensure 50 slots
-            const mergedItems = Array.from({ length: TOTAL_SLOTS }, (_, i) => {
-                const found = storedItems.find(item => item.id === (i + 1));
-                return found || {
-                    id: i + 1,
-                    imageData: null,
-                    story: null,
-                    isLoading: false,
-                    error: null
-                };
-            });
-            setItems(mergedItems);
+        try {
+          const storedItems = await loadPortfolioFromDB();
+          if (storedItems && storedItems.length > 0) {
+              // Merge stored items with default structure to ensure 50 slots
+              const mergedItems = Array.from({ length: TOTAL_SLOTS }, (_, i) => {
+                  const found = storedItems.find(item => item.id === (i + 1));
+                  return found || {
+                      id: i + 1,
+                      imageData: null,
+                      story: null,
+                      isLoading: false,
+                      error: null
+                  };
+              });
+              setItems(mergedItems);
+          }
+        } catch (err) {
+          console.error("Failed to load portfolio:", err);
+        } finally {
+          setIsLoaded(true);
         }
-        setIsLoaded(true);
     };
     initData();
   }, []);
@@ -115,8 +120,8 @@ const App: React.FC = () => {
       // 1. Update UI
       setItems(prev => prev.map(item => item.id === id ? newItem : item));
 
-      // 2. Persist to DB immediately
-      saveItemToDB(newItem);
+      // 2. Persist to DB immediately (Await to ensure lock)
+      await saveItemToDB(newItem);
 
       if (openModal) {
           setSelectedItem(newItem);
@@ -136,7 +141,7 @@ const App: React.FC = () => {
         setItems(prev => prev.map(item => item.id === id ? successItem : item));
         
         // Persist success state
-        saveItemToDB(successItem);
+        await saveItemToDB(successItem);
 
         if (openModal) {
              setSelectedItem(prev => 
@@ -157,7 +162,7 @@ const App: React.FC = () => {
         setItems(prev => prev.map(item => item.id === id ? errorItem : item));
         
         // Persist error state (image still saved)
-        saveItemToDB(errorItem);
+        await saveItemToDB(errorItem);
 
          if (openModal) {
             setSelectedItem(prev => 
@@ -205,7 +210,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleUpdateItem = (id: number, newStoryData: StoryResponse) => {
+  const handleUpdateItem = async (id: number, newStoryData: StoryResponse) => {
     const jsonString = JSON.stringify(newStoryData);
     
     // Find current item to preserve other properties like imageData
@@ -220,7 +225,7 @@ const App: React.FC = () => {
     setItems(prev => prev.map(item => item.id === id ? updatedItem : item));
     
     // Persist to DB immediately
-    saveItemToDB(updatedItem);
+    await saveItemToDB(updatedItem);
 
     setSelectedItem(prev => 
       prev && prev.id === id 
@@ -229,7 +234,13 @@ const App: React.FC = () => {
     );
   };
 
-  const handleDeleteItem = (id: number) => {
+  const handleDeleteItem = async (id: number) => {
+    // SECURITY: Double check admin status
+    if (!isLoggedIn) {
+        alert("ACCESS DENIED: Only Admin can delete items.");
+        return;
+    }
+
     const resetItem: PortfolioItem = {
         id: id,
         imageData: null,
@@ -241,7 +252,7 @@ const App: React.FC = () => {
     setItems(prev => prev.map(item => item.id === id ? resetItem : item));
     
     // Persist to DB immediately
-    saveItemToDB(resetItem);
+    await saveItemToDB(resetItem);
 
     setSelectedItem(null);
   };
@@ -404,15 +415,24 @@ const App: React.FC = () => {
 
         {/* Grid */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-          {items.map((item) => (
-            <PortfolioCard 
-              key={item.id} 
-              item={item} 
-              onUpload={handleUpload}
-              onClick={handleCardClick}
-              onAuthCheck={handleAuthCheck}
-            />
-          ))}
+          {!isLoaded ? (
+              // Loading Skeleton
+              Array.from({ length: 10 }).map((_, i) => (
+                  <div key={i} className="aspect-[3/4] bg-slate-200 border-2 border-slate-300 animate-pulse flex items-center justify-center">
+                      <span className="text-slate-400 font-bold text-xs">LOADING...</span>
+                  </div>
+              ))
+          ) : (
+            items.map((item) => (
+                <PortfolioCard 
+                key={item.id} 
+                item={item} 
+                onUpload={handleUpload}
+                onClick={handleCardClick}
+                onAuthCheck={handleAuthCheck}
+                />
+            ))
+          )}
         </div>
       </main>
 
